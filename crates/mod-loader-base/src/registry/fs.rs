@@ -168,6 +168,26 @@ impl FileSystem {
         result
     }
 
+    pub fn absolute_path<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> Result<Option<PathBuf>> {
+        let abs_path = match self {
+            Self::Disk(fs) => Some(sanitize_path(fs.root(), path.as_ref())?),
+            Self::Zip(_) => None,
+            Self::Empty => None,
+        };
+
+        debug!(
+            event = "absolute_path",
+            result = ?abs_path,
+            path = path.as_ref().as_str(),
+            root = self.root().as_str(),
+        );
+
+        Ok(abs_path)
+    }
+
 }
 
 #[derive(Debug)]

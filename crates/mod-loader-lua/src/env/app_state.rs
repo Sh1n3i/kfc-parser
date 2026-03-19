@@ -11,6 +11,8 @@ pub struct AppState {
     env: ModEnvironment,
     config: AppConfig,
 
+    registered_dlls: RefCell<Vec<PathBuf>>,
+
     type_registry: Rc<TypeRegistry>,
 
     ref_file: Rc<KFCFile>,
@@ -35,6 +37,7 @@ bitflags! {
     pub struct AppFeatures: u32 {
         const PATCH = 1 << 0;
         const EXPORT = 1 << 1;
+        const RUNTIME_DLL = 1 << 2;
 
         const ALL = !0;
     }
@@ -88,6 +91,10 @@ impl AppState {
             feature_flags |= AppFeatures::EXPORT;
         }
 
+        if options.runtime {
+            feature_flags |= AppFeatures::RUNTIME_DLL;
+        }
+
         let config = AppConfig {
             skip_cache,
             export_dir,
@@ -123,6 +130,8 @@ impl AppState {
         Ok(Self {
             env,
             config,
+
+            registered_dlls: RefCell::new(Vec::new()),
 
             type_registry,
 
@@ -165,6 +174,16 @@ impl AppState {
     #[inline]
     pub fn has_feature(&self, feature: AppFeatures) -> bool {
         self.config.feature_flags.contains(feature)
+    }
+
+    #[inline]
+    pub fn register_dll(&self, path: PathBuf) {
+        self.registered_dlls.borrow_mut().push(path);
+    }
+
+    #[inline]
+    pub fn registered_dlls(&self) -> Vec<PathBuf> {
+        self.registered_dlls.borrow().clone()
     }
 
     #[inline]

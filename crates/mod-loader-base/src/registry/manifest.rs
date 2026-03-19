@@ -35,4 +35,5 @@ pub enum Capability {
     Export,
     Patch,
     Runtime,
+    RuntimeRegisterDll,
 }

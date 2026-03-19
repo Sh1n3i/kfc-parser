@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use kfc::reflection::LookupKey;
 use mod_loader::ModEnvironment;
 
@@ -23,8 +25,10 @@ pub struct RunOptions {
     pub patch: bool,
     /// If true, it will allow mods to use `io.export` to export files to the export directory.
     pub export: bool,
+    /// If true, it will allow mods to use `loader.runtime.register_dll` to register DLLs to be loaded at runtime.
+    pub runtime: bool,
     /// If None, it will use the default export directory (`<game_dir>/export`).
-    pub export_dir: Option<std::path::PathBuf>,
+    pub export_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -34,10 +38,15 @@ pub struct RunArgs {
     pub options: RunOptions,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct RunResult {
+    pub dlls: Vec<PathBuf>,
+}
+
 pub fn run(
     env: &ModEnvironment,
-    args: RunArgs,
-) -> anyhow::Result<()> {
+    mut args: RunArgs,
+) -> anyhow::Result<RunResult> {
     info!("Running lua with options: {:?}", args);
 
     // check cache if files have changed
@@ -52,9 +61,13 @@ pub fn run(
         let cache_diff = new_cache.diff(&current_cache);
 
         if cache_diff.is_none() && args.options.patch {
+            args.options.patch = false;
+
             info!("No changes detected, skipping patching");
 
-            return Ok(());
+            if !args.options.runtime {
+                return Ok(RunResult::default());
+            }
         }
 
         cache_diff
@@ -137,7 +150,12 @@ pub fn run(
         new_cache.write(env.cache_dir());
     }
 
-    Ok(())
+    Ok(RunResult {
+        dlls: app_state.registered_dlls()
+            .into_iter()
+            .map(|path| path.into_std_path_buf())
+            .collect::<Vec<_>>(),
+    })
 }
 
 pub fn export_lua_definitions(

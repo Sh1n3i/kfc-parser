@@ -32,7 +32,7 @@ pub fn register(
     let lua_game = game::create(lua)?;
     let lua_buffer = buffer::create(lua)?;
     let lua_hasher = hasher::create(lua)?;
-    let lua_loader = loader::create(lua)?;
+    let lua_loader = loader::create(lua, r#mod.clone())?;
     let lua_image = image::create(lua)?;
 
     lua_builtin.raw_set("io", lua_io.clone())?;

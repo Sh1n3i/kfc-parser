@@ -59,22 +59,28 @@ pub fn init(config: Config) {
                 patch: true,
                 export: config.use_export_flag,
                 export_dir: config.export_directory.map(PathBuf::from),
+                runtime: true,
                 ..Default::default()
             },
         },
     );
 
-    if let Err(e) = result {
-        error!(
-            error = %e,
-            "Error running mod loader"
-        );
-        panic!("Error running mod loader: {e}");
-    }
+    let result = match result {
+        Ok(result) => result,
+        Err(e) => {
+            error!(
+                error = %e,
+                "Error running mod loader"
+            );
+            panic!("Error running mod loader: {e}");
+        }
+    };
 
     runtime::loader_attach(
         &env,
-        runtime::RuntimeOptions {},
+        runtime::RuntimeOptions {
+            dlls: result.dlls,
+        },
     ).expect("Failed to attach runtime loader");
 }
 
