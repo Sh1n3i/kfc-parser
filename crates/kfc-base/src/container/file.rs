@@ -139,10 +139,10 @@ impl KFCFile {
         &mut self,
         resources: StaticMap<ResourceId, ResourceEntry>,
         type_registry: &TypeRegistry,
-    ) {
+    ) -> Result<(), KFCWriteError> {
         self.resources = resources;
         self.resource_locations[0].count = self.resources.len();
-        self.rebuild_resource_bundles(type_registry);
+        self.rebuild_resource_bundles(type_registry)
     }
 
     pub fn set_resource_chunks(
@@ -176,7 +176,7 @@ impl KFCFile {
         self.version = version;
     }
 
-    fn rebuild_resource_bundles(&mut self, type_registry: &TypeRegistry) {
+    fn rebuild_resource_bundles(&mut self, type_registry: &TypeRegistry) -> Result<(), KFCWriteError> {
         let mut type_hashes = self
             .resources
             .keys()
@@ -185,19 +185,20 @@ impl KFCFile {
             .collect::<HashSet<_>>()
             .into_iter()
             .map(|hash| {
-                (
+                let internal_hash = type_registry
+                    .get_by_hash(LookupKey::Qualified(hash))
+                    .ok_or(KFCWriteError::UnknownTypeHash(hash))?
+                    .internal_hash;
+
+                Ok((
                     hash,
                     ResourceBundleEntry {
-                        // TODO: Remove unwrap
-                        internal_hash: type_registry
-                            .get_by_hash(LookupKey::Qualified(hash))
-                            .unwrap()
-                            .internal_hash,
+                        internal_hash,
                         ..Default::default()
                     },
-                )
+                ))
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, KFCWriteError>>()?;
 
         let mut indices = Vec::with_capacity(self.resources.len());
 
@@ -219,6 +220,8 @@ impl KFCFile {
 
         self.resource_indices = indices;
         self.resource_bundles = type_hashes.into_iter().collect::<HashMap<_, _>>().into();
+
+        Ok(())
     }
 
 }

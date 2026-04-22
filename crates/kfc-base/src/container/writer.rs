@@ -413,7 +413,7 @@ where
         let mut file = KFCFile::default();
 
         file.set_game_version(self.game_version);
-        file.set_resources(self.resources.build(), self.type_registry.borrow());
+        file.set_resources(self.resources.build(), self.type_registry.borrow())?;
         file.set_contents(self.contents.build());
         file.set_containers(containers);
         file.set_resource_chunks(chunks);
