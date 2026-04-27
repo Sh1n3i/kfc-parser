@@ -1,4 +1,4 @@
-use std::{cell::{RefCell, RefMut}, collections::{hash_map::{self, Entry}, HashMap}, rc::Rc};
+use std::{cell::{Cell, RefCell, RefMut}, collections::{HashMap, hash_map::{self, Entry}}, rc::Rc};
 
 use bitflags::bitflags;
 use mod_loader::ModEnvironment;
@@ -236,6 +236,7 @@ impl AppState {
                     resource_id: *guid,
                     original_value: OnceCell::new(),
                     value: RefCell::default(),
+                    is_dirty: Cell::new(false),
                 };
                 let info = Rc::new(info);
 
@@ -276,6 +277,7 @@ impl AppState {
             resource_id: *guid,
             original_value: OnceCell::new(),
             value: RefCell::new(Some(value)),
+            is_dirty: Cell::new(true),
         });
 
         resources.insert(*guid, info);
@@ -377,6 +379,7 @@ pub struct ResourceInfo {
 
     original_value: OnceCell<Option<MappedValue>>,
     value: RefCell<Option<LuaValue>>,
+    is_dirty: Cell<bool>,
 }
 
 impl ResourceInfo {
@@ -421,6 +424,7 @@ impl ResourceInfo {
         ).map_err(LuaError::external)?;
 
         self.value.replace(Some(lua_value));
+        self.is_dirty.replace(true);
 
         Ok(())
     }
@@ -438,7 +442,7 @@ impl ResourceInfo {
             None => return Ok(None),
         };
 
-        if !is_dirty_lua_value(lua_value)? {
+        if !self.is_dirty.get() && !is_dirty_lua_value(lua_value)? {
             return Ok(None);
         }
 
