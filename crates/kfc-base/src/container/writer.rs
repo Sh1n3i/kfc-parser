@@ -1,6 +1,6 @@
-use std::{borrow::Borrow, fs::File, io::{BufWriter, Cursor, Seek, SeekFrom, Write}, path::{Path, PathBuf}};
+use std::{borrow::Borrow, collections::HashMap, fs::File, io::{BufWriter, Cursor, Seek, SeekFrom, Write}, path::{Path, PathBuf}};
 
-use crate::{container::header::ResourceChunkInfo, guid::{ContentHash, ResourceId}, io::{WriteExt, WriteSeekExt}, reflection::TypeRegistry};
+use crate::{Hash32, container::header::ResourceChunkInfo, guid::{ContentHash, ResourceId}, io::{WriteExt, WriteSeekExt}, reflection::TypeRegistry};
 
 use super::{header::{ContentEntry, ContainerInfo, ResourceEntry}, KFCFile, KFCReadError, KFCWriteError, StaticMapBuilder};
 
@@ -413,7 +413,12 @@ where
         let mut file = KFCFile::default();
 
         file.set_game_version(self.game_version);
-        file.set_resources(self.resources.build(), self.type_registry.borrow());
+        file.set_resources(
+            self.resources.build(),
+            self.type_registry.borrow(),
+            self.incremental_data.as_ref()
+                .map(|data| data.reference_file.borrow().resource_bundles())
+        )?;
         file.set_contents(self.contents.build());
         file.set_containers(containers);
         file.set_resource_chunks(chunks);

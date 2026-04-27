@@ -136,8 +136,16 @@ fn unpack(
         fatal!("Game directory does not exist: {}", game_dir.display());
     }
 
-    if output_dir.map(|x| !x.exists()).unwrap_or(false) {
-        fatal!("Output directory does not exist: {}", output_dir.unwrap().display());
+    if let Some(dir) = output_dir {
+        if dir.exists() && !dir.is_dir() {
+            fatal!("Output path exists but is not a directory: {}", dir.display());
+        }
+        if !dir.exists() {
+            if let Err(e) = std::fs::create_dir_all(dir) {
+                fatal!("Failed to create output directory {}: {}", dir.display(), e);
+            }
+            info!("Created output directory: {}", dir.display());
+        }
     }
 
     let file_name = get_file_name(game_dir, file_name)?;
@@ -253,6 +261,8 @@ fn unpack_files(
     let total = guids.len() as u32;
     let pending_guids = Mutex::new(guids.into_iter().collect::<Vec<_>>());
     let failed_unpacks = AtomicU32::new(0);
+    let unknown_unpacks = AtomicU32::new(0);
+    let warned_unknown_types = Mutex::new(HashSet::<u32>::new());
     let start = std::time::Instant::now();
     let names = Mutex::new(HashSet::new());
 
@@ -261,6 +271,8 @@ fn unpack_files(
 
         for i in 0..thread_count {
             let failed_unpacks = &failed_unpacks;
+            let unknown_unpacks = &unknown_unpacks;
+            let warned_unknown_types = &warned_unknown_types;
             let pending_guids = &pending_guids;
             let output_dir = &output_dir;
             let pb = &pb;
@@ -291,6 +303,44 @@ fn unpack_files(
                     };
 
                     let result: anyhow::Result<()> = (|| {
+                        // If the type isn't in the registry, dump raw bytes instead of failing.
+                        if type_registry.get_by_hash(LookupKey::Qualified(guid.type_hash())).is_none() {
+                            buf.clear();
+                            if !reader.read_resource_into(guid, &mut buf)? {
+                                pb.suspend(|| {
+                                    warn!("Skipping descriptor (not found): {}", guid.to_qualified_string());
+                                });
+                                return Ok(());
+                            }
+
+                            let type_hash = guid.type_hash();
+                            let parent = output_dir
+                                .join("_unknown")
+                                .join(format!("{:08x}", type_hash));
+
+                            if !parent.exists() {
+                                std::fs::create_dir_all(&parent)?;
+                            }
+
+                            let path = parent.join(format!("{}.bin", guid.to_qualified_string()));
+                            std::fs::write(&path, &buf)?;
+
+                            unknown_unpacks.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+                            let mut warned = warned_unknown_types.lock().unwrap();
+                            if warned.insert(type_hash) {
+                                pb.suspend(|| {
+                                    warn!(
+                                        "Unknown type 0x{:08X} not found in registry; dumping raw bytes to {}",
+                                        type_hash,
+                                        parent.display()
+                                    );
+                                });
+                            }
+
+                            return Ok(());
+                        }
+
                         buf.clear();
                         let descriptor = match crate::util::read_descriptor_into(
                             &mut reader,
@@ -372,9 +422,17 @@ fn unpack_files(
     pb.finish_and_clear();
 
     let failed_unpacks = failed_unpacks.load(std::sync::atomic::Ordering::Relaxed);
+    let unknown_unpacks = unknown_unpacks.load(std::sync::atomic::Ordering::Relaxed);
     let end = std::time::Instant::now();
 
-    info!("Unpacked a total of {}/{} descriptors in {:?}", total - failed_unpacks, total, end - start);
+    info!(
+        "Unpacked a total of {}/{} descriptors in {:?} ({} raw, {} failed)",
+        total - failed_unpacks - unknown_unpacks,
+        total,
+        end - start,
+        unknown_unpacks,
+        failed_unpacks,
+    );
 
     Ok(())
 }
@@ -1173,6 +1231,8 @@ fn assemble_impact(
     let output_file = output_file.unwrap_or(input_file)
         .with_extension("json");
 
+    ensure_parent_dir(&output_file)?;
+
     let writer = match File::create(&output_file) {
         Ok(file) => BufWriter::new(file),
         Err(e) => fatal!("Failed to create output file: {}", e)
@@ -1199,6 +1259,10 @@ fn disassemble_impact(
     let impact_file = output_file.with_file_name(format!("{}.impact", file_name));
     let shutdown_file = output_file.with_file_name(format!("{}.shutdown.impact", file_name));
     let data_file = output_file.with_file_name(format!("{}.data.json", file_name));
+
+    ensure_parent_dir(&impact_file)?;
+    ensure_parent_dir(&shutdown_file)?;
+    ensure_parent_dir(&data_file)?;
 
     // read program
 
@@ -1318,6 +1382,20 @@ fn get_file_opt(
     let file = game_dir.join(format!("{}.{}", file_name, extension));
 
     Ok(file)
+}
+
+/// Ensure the parent directory of `path` exists, creating it (and any missing
+/// parents) on demand. No-op if `path` has no parent or the parent already exists.
+fn ensure_parent_dir(path: &Path) -> Result<(), Error> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                fatal!("Failed to create directory {}: {}", parent.display(), e);
+            }
+            info!("Created directory: {}", parent.display());
+        }
+    }
+    Ok(())
 }
 
 fn get_file_name(

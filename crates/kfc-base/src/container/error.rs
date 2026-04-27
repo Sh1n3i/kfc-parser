@@ -7,6 +7,9 @@ pub enum KFCWriteError {
 
     #[error("Size too large: {0}")]
     SizeTooLarge(u64),
+
+    #[error("Unknown resource type hash: {0:#X}")]
+    UnknownTypeHash(u32),
 }
 
 #[derive(Debug, Error)]
