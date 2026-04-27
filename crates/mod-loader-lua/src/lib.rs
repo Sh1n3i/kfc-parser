@@ -112,6 +112,7 @@ pub fn run(
         let mut buf = Vec::new();
         let mut writer = app_state.take_writer();
         let resources = app_state.get_cached_resources();
+        let mut applied_resources = 0;
 
         for resource in resources.iter() {
             let value = resource.apply(&runner.lua)?;
@@ -128,10 +129,13 @@ pub fn run(
                     &mut buf,
                 ).unwrap();
                 writer.write_resource(&resource.resource_id, &buf)?;
+                applied_resources += 1;
             }
         }
 
         writer.finalize()?;
+
+        info!("Applied {} patches", applied_resources);
     }
 
     // create a new cache file
