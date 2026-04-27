@@ -5,6 +5,8 @@
 --- @class LoaderRuntime
 local runtime = {}
 
+--- NOTE: This function is currently not implemented and won't do anything.
+---
 --- Registers a dll file to be loaded by the mod loader when the game starts.
 ---
 --- [loader.features.runtime.dll](lua://loader.features.runtime)
