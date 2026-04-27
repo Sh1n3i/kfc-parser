@@ -409,15 +409,6 @@ where
 
         // header construction
 
-        let internal_hash_fallback: Option<HashMap<Hash32, Hash32>> = self.incremental_data.as_ref()
-            .map(|data| {
-                let reference = data.reference_file.borrow();
-                let bundles = reference.resource_bundles();
-                bundles.keys().iter().copied()
-                    .zip(bundles.values().iter().map(|entry| entry.internal_hash))
-                    .collect()
-            });
-
         let mut file_writer = BufWriter::new(&mut self.file);
         let mut file = KFCFile::default();
 
@@ -425,7 +416,8 @@ where
         file.set_resources(
             self.resources.build(),
             self.type_registry.borrow(),
-            internal_hash_fallback.as_ref(),
+            self.incremental_data.as_ref()
+                .map(|data| data.reference_file.borrow().resource_bundles())
         )?;
         file.set_contents(self.contents.build());
         file.set_containers(containers);
